@@ -1,0 +1,54 @@
+[mysqld]
+# Configurações gerais
+default_authentication_plugin = mysql_native_password
+sql_mode = ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION
+
+# Configurações de performance
+innodb_buffer_pool_size = 256M
+innodb_buffer_pool_instances = 1
+innodb_flush_log_at_trx_commit = 2
+innodb_log_buffer_size = 32M
+innodb_log_file_size = 128M
+innodb_flush_method = O_DIRECT
+innodb_file_per_table = 1
+
+# Configurações de conexão
+max_connections = 200
+connect_timeout = 60
+wait_timeout = 120
+interactive_timeout = 120
+max_allowed_packet = 64M
+
+# Query cache (para versões que suportam)
+query_cache_type = 1
+query_cache_size = 64M
+query_cache_limit = 8M
+
+# Table cache
+table_open_cache = 4096
+table_definition_cache = 4096
+
+# Thread cache
+thread_cache_size = 50
+
+# Configurações de logging
+slow_query_log = 1
+long_query_time = 2
+general_log = 0
+
+# Configurações de segurança
+local_infile = 0
+
+# Configurações específicas para WordPress
+tmp_table_size = 64M
+max_heap_table_size = 64M
+
+# Charset
+character_set_server = utf8mb4
+collation_server = utf8mb4_unicode_ci
+
+[mysql]
+default_character_set = utf8mb4
+
+[client]
+default_character_set = utf8mb4 

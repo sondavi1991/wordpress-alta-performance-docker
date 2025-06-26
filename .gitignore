@@ -1,0 +1,46 @@
+# Dados persistentes dos containers
+data/mysql/
+data/wordpress/
+data/redis/
+
+# Arquivos de ambiente
+.env
+
+# Logs
+*.log
+logs/
+
+# Cache
+cache/
+tmp/
+
+# Backups locais
+backup/
+*.sql
+*.sql.gz
+*.tar.gz
+
+# Arquivos temporários
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp
+*.swo
+
+# IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Sistema
+.env.local
+.env.production
+
+# Certificados locais
+*.pem
+*.crt
+*.key
+
+# Docker
+.dockerignore 
