@@ -78,7 +78,7 @@ RUN echo "memory_limit = 512M" > /etc/php/8.2/fpm/conf.d/wordpress.ini && \
     echo "max_input_vars = 5000" >> /etc/php/8.2/fpm/conf.d/wordpress.ini && \
     echo "date.timezone = America/Sao_Paulo" >> /etc/php/8.2/fpm/conf.d/wordpress.ini && \
     echo "session.save_handler = redis" >> /etc/php/8.2/fpm/conf.d/wordpress.ini && \
-    echo "session.save_path = 'tcp://redis:6379?auth=redis_secure_password'" >> /etc/php/8.2/fpm/conf.d/wordpress.ini
+    echo "session.save_path = 'tcp://redis:6379?auth=password'" >> /etc/php/8.2/fpm/conf.d/wordpress.ini
 
 # Copiar configurações para CLI também
 RUN cp /etc/php/8.2/fpm/conf.d/wordpress.ini /etc/php/8.2/cli/conf.d/

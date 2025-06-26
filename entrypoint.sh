@@ -38,7 +38,7 @@ check_database_protection() {
         log "🔍 Verificando proteção de dados existentes..."
         
         # Tentar conectar ao MySQL e verificar se existem tabelas
-        if mysql -h"${MYSQL_HOST}" -u"${MYSQL_USER}" -p"${MYSQL_PASSWORD}" "${MYSQL_DATABASE}" -e "SHOW TABLES;" 2>/dev/null | grep -q "wp_\|wpx_"; then
+        if mysql -h"${MYSQL_HOST}" -u"${MYSQL_USER}" -p"${MYSQL_PASSWORD:-password}" "${MYSQL_DATABASE}" -e "SHOW TABLES;" 2>/dev/null | grep -q "wp_\|wpx_"; then
             warn "⚠️  DADOS EXISTENTES DETECTADOS!"
             warn "⚠️  Tabelas WordPress encontradas no banco de dados"
             warn "⚠️  Pulando configuração inicial para proteger dados existentes"
@@ -66,7 +66,7 @@ configure_wordpress() {
         # Configurar banco de dados
         sed -i "s/database_name_here/${MYSQL_DATABASE:-wordpress}/" /var/www/html/wp-config.php
         sed -i "s/username_here/${MYSQL_USER:-wordpress}/" /var/www/html/wp-config.php
-        sed -i "s/password_here/${MYSQL_PASSWORD:-wordpress}/" /var/www/html/wp-config.php
+        sed -i "s/password_here/${MYSQL_PASSWORD:-password}/" /var/www/html/wp-config.php
         sed -i "s/localhost/${MYSQL_HOST:-mysql}/" /var/www/html/wp-config.php
         
         # Configurar prefixo personalizado
@@ -95,7 +95,7 @@ configure_wordpress() {
 // Redis Configuration
 define('WP_REDIS_HOST', 'redis');
 define('WP_REDIS_PORT', 6379);
-define('WP_REDIS_PASSWORD', 'redis_secure_password');
+define('WP_REDIS_PASSWORD', 'password');
 define('WP_REDIS_DATABASE', 0);
 define('WP_REDIS_TIMEOUT', 1);
 define('WP_REDIS_READ_TIMEOUT', 1);
@@ -139,7 +139,7 @@ test_redis_connection() {
     local max_retries=30
     
     while [[ $retry_count -lt $max_retries ]]; do
-        if redis-cli -h redis -p 6379 -a "${REDIS_PASSWORD:-redis_secure_password}" ping > /dev/null 2>&1; then
+        if redis-cli -h redis -p 6379 -a "${REDIS_PASSWORD:-password}" ping > /dev/null 2>&1; then
             log "✅ Redis conectado com sucesso!"
             return 0
         fi
@@ -162,7 +162,7 @@ wait_for_mysql() {
         local max_retries=30
         
         while [[ $retry_count -lt $max_retries ]]; do
-            if mysql -h"${MYSQL_HOST}" -u"${MYSQL_USER}" -p"${MYSQL_PASSWORD}" -e "SELECT 1" > /dev/null 2>&1; then
+            if mysql -h"${MYSQL_HOST}" -u"${MYSQL_USER:-wordpress}" -p"${MYSQL_PASSWORD:-password}" -e "SELECT 1" > /dev/null 2>&1; then
                 log "✅ MySQL conectado com sucesso!"
                 return 0
             fi
@@ -241,8 +241,11 @@ setup_litespeed() {
     
     # Definir senha do admin se não existir
     if [[ -n "${LSWS_ADMIN_PASS}" ]]; then
-        echo "admin:${LSWS_ADMIN_PASS}" | /usr/local/lsws/admin/misc/admpass.sh
+        echo "admin:${LSWS_ADMIN_PASS:-password}" | /usr/local/lsws/admin/misc/admpass.sh
         log "✅ Senha do admin LiteSpeed definida"
+    else
+        echo "admin:password" | /usr/local/lsws/admin/misc/admpass.sh
+        log "✅ Senha padrão do admin LiteSpeed definida (admin/password)"
     fi
     
     # Copiar configurações se não existirem
@@ -259,6 +262,7 @@ main() {
     log "🚀 Versão: 2.0.0"
     log "📦 Stack: Ubuntu 24.04 + LiteSpeed + PHP 8.2 + Redis + MySQL"
     log "🔧 Deploy: Coolify Ready"
+    log "🔑 Senhas padrão: password (TROQUE EM PRODUÇÃO!)"
     
     # Aguardar dependências
     wait_for_mysql
@@ -274,8 +278,9 @@ main() {
     
     log "🎉 Inicialização concluída!"
     log "🌐 WordPress disponível em: http://localhost"
-    log "🔧 Admin LiteSpeed: http://localhost:7080"
-    log "📊 Use 'docker-compose logs -f wordpress' para monitorar"
+    log "🔧 Admin LiteSpeed: http://localhost:7080 (admin/password)"
+    log "📊 phpMyAdmin: http://localhost:8080"
+    log "📈 Use 'docker-compose logs -f wordpress' para monitorar"
     
     # Executar comando passado como argumento
     exec "$@"
