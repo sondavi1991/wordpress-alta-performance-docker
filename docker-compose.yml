@@ -9,17 +9,17 @@ services:
     ports:
       - "3306:3306"
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-password}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-password123}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-wordpress}
       MYSQL_USER: ${MYSQL_USER:-wordpress}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-password}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-password123}
     volumes:
       - ./data/mysql:/var/lib/mysql
       - ./mysql/conf.d:/etc/mysql/conf.d:ro
     networks:
       - wordpress-network
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-ppassword"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-ppassword123"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -32,16 +32,16 @@ services:
     restart: unless-stopped
     ports:
       - "6379:6379"
-    command: ["redis-server", "/etc/redis/redis.conf", "--requirepass", "password"]
+    command: ["redis-server", "/etc/redis/redis.conf", "--requirepass", "password123"]
     environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-password}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-password123}
     volumes:
       - ./data/redis:/data
       - ./redis/conf:/etc/redis:ro
     networks:
       - wordpress-network
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "password", "ping"]
+      test: ["CMD", "redis-cli", "-a", "password123", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -61,7 +61,7 @@ services:
       MYSQL_HOST: mysql
       MYSQL_DATABASE: ${MYSQL_DATABASE:-wordpress}
       MYSQL_USER: ${MYSQL_USER:-wordpress}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-password}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-password123}
       
       # WordPress Configuration
       WP_TABLE_PREFIX: ${WP_TABLE_PREFIX:-wpx_}
@@ -70,11 +70,11 @@ services:
       # Redis Configuration  
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-password}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-password123}
       REDIS_DB: ${REDIS_DB:-0}
       
       # LiteSpeed Configuration
-      LSWS_ADMIN_PASS: ${LSWS_ADMIN_PASS:-password}
+      LSWS_ADMIN_PASS: ${LSWS_ADMIN_PASS:-password123}
       
       # Performance Settings
       PHP_MEMORY_LIMIT: ${PHP_MEMORY_LIMIT:-512M}
@@ -112,8 +112,8 @@ services:
       PMA_HOST: mysql
       PMA_PORT: 3306
       PMA_USER: ${MYSQL_USER:-wordpress}
-      PMA_PASSWORD: ${MYSQL_PASSWORD:-password}
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-password}
+      PMA_PASSWORD: ${MYSQL_PASSWORD:-password123}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-password123}
       UPLOAD_LIMIT: 128M
       MEMORY_LIMIT: 512M
       MAX_EXECUTION_TIME: 600

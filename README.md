@@ -8,11 +8,11 @@ Stack completo WordPress + LiteSpeed + Redis + MySQL otimizado para máxima perf
 
 | Serviço | Usuário | Senha | Acesso |
 |---------|---------|-------|--------|
-| **MySQL** | `wordpress` | `password` | Banco de dados |
-| **MySQL Root** | `root` | `password` | Admin do banco |
-| **Redis** | - | `password` | Cache |
-| **LiteSpeed Admin** | `admin` | `password` | http://localhost:7080 |
-| **phpMyAdmin** | `wordpress` | `password` | http://localhost:8080 |
+| **MySQL** | `wordpress` | `password123` | Banco de dados |
+| **MySQL Root** | `root` | `password123` | Admin do banco |
+| **Redis** | - | `password123` | Cache |
+| **LiteSpeed Admin** | `admin` | `password123` | http://localhost:7080 |
+| **phpMyAdmin** | `wordpress` | `password123` | http://localhost:8080 |
 
 ## 📦 Como usar no Coolify
 

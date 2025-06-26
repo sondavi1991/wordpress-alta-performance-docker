@@ -78,7 +78,7 @@ RUN echo "memory_limit = 512M" > /etc/php/8.2/fpm/conf.d/wordpress.ini && \
     echo "max_input_vars = 5000" >> /etc/php/8.2/fpm/conf.d/wordpress.ini && \
     echo "date.timezone = America/Sao_Paulo" >> /etc/php/8.2/fpm/conf.d/wordpress.ini && \
     echo "session.save_handler = redis" >> /etc/php/8.2/fpm/conf.d/wordpress.ini && \
-    echo "session.save_path = 'tcp://redis:6379?auth=password'" >> /etc/php/8.2/fpm/conf.d/wordpress.ini
+    echo "session.save_path = 'tcp://redis:6379?auth=password123'" >> /etc/php/8.2/fpm/conf.d/wordpress.ini
 
 # Copiar configurações para CLI também
 RUN cp /etc/php/8.2/fpm/conf.d/wordpress.ini /etc/php/8.2/cli/conf.d/
@@ -133,10 +133,11 @@ RUN mkdir -p /var/www/html && \
     mkdir -p /etc/supervisor/conf.d && \
     mkdir -p /var/log && \
     mkdir -p /tmp/php-sessions && \
-    chmod -R 777 /tmp/php-sessions
+    chmod -R 777 /tmp/php-sessions && \
+    mkdir -p /usr/local/lsws/admin/conf
 
-# Configurar OpenLiteSpeed
-RUN /usr/local/lsws/admin/misc/admpass.sh
+# Configurar OpenLiteSpeed (sem configurar senha durante build)
+RUN mkdir -p /usr/local/lsws/admin/conf
 
 # Baixar e instalar WordPress
 WORKDIR /var/www/html
