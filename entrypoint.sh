@@ -1,307 +1,288 @@
 #!/bin/bash
+
+# Script de inicialização para WordPress com LiteSpeed
+# Autor: Sistema de Deploy Automatizado
+# Data: 2025
+
 set -e
 
-# Função para logging
+# Cores para logs
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Função para log colorido
 log() {
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1"
+    echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')] $1${NC}"
 }
 
-# Função para verificar se banco já existe e tem dados
+warn() {
+    echo -e "${YELLOW}[$(date +'%Y-%m-%d %H:%M:%S')] WARNING: $1${NC}"
+}
+
+error() {
+    echo -e "${RED}[$(date +'%Y-%m-%d %H:%M:%S')] ERROR: $1${NC}"
+}
+
+info() {
+    echo -e "${BLUE}[$(date +'%Y-%m-%d %H:%M:%S')] INFO: $1${NC}"
+}
+
+log "🚀 Iniciando container WordPress com LiteSpeed..."
+
+# Verificar se é uma instalação existente
 check_database_protection() {
-    local db_exists=false
-    local has_data=false
-    
-    if [ ! -z "$MYSQL_HOST" ] && [ ! -z "$MYSQL_DATABASE" ]; then
-        log "Verificando proteção de dados do banco..."
+    if [[ -n "${MYSQL_HOST}" && -n "${MYSQL_USER}" && -n "${MYSQL_PASSWORD}" && -n "${MYSQL_DATABASE}" ]]; then
+        log "🔍 Verificando proteção de dados existentes..."
         
-        # Aguardar banco estar disponível
-        for i in {1..30}; do
-            if mysqladmin ping -h"$MYSQL_HOST" -u"${MYSQL_USER:-wordpress}" -p"${MYSQL_PASSWORD:-wordpress_secure_password}" --silent 2>/dev/null; then
-                break
-            fi
-            
-            if [ $i -eq 30 ]; then
-                log "WARNING: Banco de dados não disponível após 30 tentativas"
-                return 1
-            fi
-            
-            log "Aguardando banco de dados... (tentativa $i/30)"
-            sleep 2
-        done
-        
-        # Verificar se banco existe
-        if mysql -h"$MYSQL_HOST" -u"${MYSQL_USER:-wordpress}" -p"${MYSQL_PASSWORD:-wordpress_secure_password}" -e "USE ${MYSQL_DATABASE}" 2>/dev/null; then
-            db_exists=true
-            log "✅ Banco de dados '${MYSQL_DATABASE}' já existe"
-            
-            # Verificar se tem dados (tabelas WordPress)
-            local table_count=$(mysql -h"$MYSQL_HOST" -u"${MYSQL_USER:-wordpress}" -p"${MYSQL_PASSWORD:-wordpress_secure_password}" -D"${MYSQL_DATABASE}" -se "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '${MYSQL_DATABASE}' AND table_name LIKE '${WORDPRESS_TABLE_PREFIX:-wpx_}%';" 2>/dev/null || echo "0")
-            
-            if [ "$table_count" -gt 0 ]; then
-                has_data=true
-                log "✅ Encontradas $table_count tabelas WordPress existentes"
-                log "🛡️ PROTEÇÃO ATIVADA: Dados existentes detectados - pulando configuração inicial"
-            fi
-        else
-            log "ℹ️ Banco de dados '${MYSQL_DATABASE}' não existe ou está vazio"
-        fi
-    fi
-    
-    # Definir variáveis globais
-    export DB_EXISTS=$db_exists
-    export HAS_DATA=$has_data
-}
-
-# Configurar LiteSpeed
-configure_litespeed() {
-    log "Configurando LiteSpeed..."
-    
-    # Criar diretórios necessários
-    mkdir -p /usr/local/lsws/logs/vhosts/wordpress
-    mkdir -p /usr/local/lsws/conf/vhosts/wordpress
-    mkdir -p /tmp/lshttpd/cache
-    mkdir -p /tmp/lshttpd/swap
-    mkdir -p /usr/local/lsws/Example/html/blocked
-    
-    # Definir permissões corretas
-    chown -R lsws:lsws /usr/local/lsws/logs 2>/dev/null || true
-    chown -R lsws:lsws /tmp/lshttpd 2>/dev/null || true
-    chmod -R 755 /usr/local/lsws/logs
-    chmod -R 755 /tmp/lshttpd
-    
-    # Gerar certificado SSL self-signed se não existir
-    if [ ! -f "/usr/local/lsws/conf/cert/server.crt" ]; then
-        log "Gerando certificado SSL self-signed..."
-        mkdir -p /usr/local/lsws/conf/cert
-        openssl req -x509 -newkey rsa:4096 -keyout /usr/local/lsws/conf/cert/server.key \
-            -out /usr/local/lsws/conf/cert/server.crt -days 365 -nodes \
-            -subj "/C=BR/ST=SP/L=Sao Paulo/O=WordPress/CN=${DOMAIN:-localhost}"
-        chown lsws:lsws /usr/local/lsws/conf/cert/* 2>/dev/null || true
-        chmod 600 /usr/local/lsws/conf/cert/server.key
-        chmod 644 /usr/local/lsws/conf/cert/server.crt
-    fi
-    
-    # Configurar página de manutenção
-    cat > /usr/local/lsws/Example/html/blocked/index.html << 'EOF'
-<!DOCTYPE html>
-<html><head><title>Site em Manutenção</title></head>
-<body style="font-family:Arial;text-align:center;padding:50px;">
-<h1>Site em Manutenção</h1>
-<p>Este site está temporariamente indisponível. Tente novamente em alguns minutos.</p>
-</body></html>
-EOF
-}
-
-# Configurar Redis
-configure_redis() {
-    if [ ! -z "$REDIS_HOST" ]; then
-        log "Configurando conexão Redis..."
-        
-        # Aguardar Redis estar disponível
-        for i in {1..30}; do
-            if redis-cli -h "$REDIS_HOST" -p "${REDIS_PORT:-6379}" -a "${REDIS_PASSWORD:-redis_secure_password}" ping >/dev/null 2>&1; then
-                log "✅ Redis conectado com sucesso!"
-                break
-            fi
-            
-            if [ $i -eq 30 ]; then
-                log "WARNING: Redis não disponível após 30 tentativas"
-                return 1
-            fi
-            
-            log "Aguardando Redis... (tentativa $i/30)"
-            sleep 2
-        done
-        
-        # Testar configuração Redis
-        redis-cli -h "$REDIS_HOST" -p "${REDIS_PORT:-6379}" -a "${REDIS_PASSWORD:-redis_secure_password}" set test_key "test_value" >/dev/null 2>&1
-        local test_result=$(redis-cli -h "$REDIS_HOST" -p "${REDIS_PORT:-6379}" -a "${REDIS_PASSWORD:-redis_secure_password}" get test_key 2>/dev/null)
-        
-        if [ "$test_result" = "test_value" ]; then
-            log "✅ Redis funcionando corretamente"
-            redis-cli -h "$REDIS_HOST" -p "${REDIS_PORT:-6379}" -a "${REDIS_PASSWORD:-redis_secure_password}" del test_key >/dev/null 2>&1
-        else
-            log "❌ ERRO: Redis não está funcionando corretamente"
+        # Tentar conectar ao MySQL e verificar se existem tabelas
+        if mysql -h"${MYSQL_HOST}" -u"${MYSQL_USER}" -p"${MYSQL_PASSWORD}" "${MYSQL_DATABASE}" -e "SHOW TABLES;" 2>/dev/null | grep -q "wp_\|wpx_"; then
+            warn "⚠️  DADOS EXISTENTES DETECTADOS!"
+            warn "⚠️  Tabelas WordPress encontradas no banco de dados"
+            warn "⚠️  Pulando configuração inicial para proteger dados existentes"
             return 1
+        else
+            info "✅ Banco de dados vazio ou sem tabelas WordPress - configuração segura"
+            return 0
         fi
-    fi
-}
-
-# Configurar WordPress
-configure_wordpress() {
-    log "Verificando configuração do WordPress..."
-    
-    # Se já tem dados, não reconfigurar
-    if [ "$HAS_DATA" = true ]; then
-        log "🛡️ Dados existentes detectados - pulando configuração inicial do WordPress"
-        # Apenas garantir permissões corretas
-        chown -R nobody:nogroup /var/www/html
-        find /var/www/html -type f -exec chmod 644 {} \; 2>/dev/null || true
-        find /var/www/html -type d -exec chmod 755 {} \; 2>/dev/null || true
-        chmod 600 /var/www/html/wp-config.php 2>/dev/null || true
+    else
+        warn "⚠️  Variáveis de banco não definidas - assumindo primeira instalação"
         return 0
     fi
-    
-    if [ ! -f "/var/www/html/wp-config.php" ]; then
-        log "Configurando WordPress pela primeira vez..."
-        cp /var/www/html/wp-config-sample.php /var/www/html/wp-config.php
-        
-        # Configurar conexão com banco de dados
-        sed -i "s/database_name_here/${MYSQL_DATABASE:-wordpress}/g" /var/www/html/wp-config.php
-        sed -i "s/username_here/${MYSQL_USER:-wordpress}/g" /var/www/html/wp-config.php
-        sed -i "s/password_here/${MYSQL_PASSWORD:-wordpress_secure_password}/g" /var/www/html/wp-config.php
-        sed -i "s/localhost/${MYSQL_HOST:-mysql}/g" /var/www/html/wp-config.php
-        
-        # Configurar prefixo da tabela
-        sed -i "s/\$table_prefix = 'wp_';/\$table_prefix = '${WORDPRESS_TABLE_PREFIX:-wpx_}';/g" /var/www/html/wp-config.php
-        
-        # Adicionar configurações Redis se disponível
-        if [ ! -z "$REDIS_HOST" ]; then
-            cat >> /var/www/html/wp-config.php << EOF
+}
 
-/* Configurações Redis Object Cache */
-define('WP_REDIS_HOST', '${REDIS_HOST}');
-define('WP_REDIS_PORT', ${REDIS_PORT:-6379});
-define('WP_REDIS_PASSWORD', '${REDIS_PASSWORD:-redis_secure_password}');
-define('WP_REDIS_DATABASE', ${REDIS_DB:-0});
-define('WP_REDIS_TIMEOUT', 1);
-define('WP_REDIS_READ_TIMEOUT', 1);
-define('WP_REDIS_MAXTTL', 86400);
-define('WP_REDIS_GLOBAL_GROUPS', array('users', 'userlogins', 'usermeta', 'user_meta', 'useremail', 'userslugs', 'site-transient', 'site-options', 'blog-lookup', 'blog-details', 'rss', 'global-posts', 'blog-id-cache', 'networks', 'sites', 'site-details'));
-define('WP_REDIS_IGNORED_GROUPS', array('counts', 'plugins'));
-EOF
+# Configurar wp-config.php apenas se necessário
+configure_wordpress() {
+    if [[ ! -f "/var/www/html/wp-config.php" ]] && check_database_protection; then
+        log "📝 Configurando wp-config.php..."
+        
+        # Copiar template se não existir
+        if [[ ! -f "/var/www/html/wp-config.php" ]]; then
+            cp /var/www/html/wp-config-sample.php /var/www/html/wp-config.php
         fi
         
-        # Adicionar configurações extras de segurança e performance
+        # Configurar banco de dados
+        sed -i "s/database_name_here/${MYSQL_DATABASE:-wordpress}/" /var/www/html/wp-config.php
+        sed -i "s/username_here/${MYSQL_USER:-wordpress}/" /var/www/html/wp-config.php
+        sed -i "s/password_here/${MYSQL_PASSWORD:-wordpress}/" /var/www/html/wp-config.php
+        sed -i "s/localhost/${MYSQL_HOST:-mysql}/" /var/www/html/wp-config.php
+        
+        # Configurar prefixo personalizado
+        sed -i "s/\$table_prefix = 'wp_';/\$table_prefix = '${WP_TABLE_PREFIX:-wpx_}';/" /var/www/html/wp-config.php
+        
+        # Gerar salt keys únicos
+        SALT=$(curl -s https://api.wordpress.org/secret-key/1.1/salt/)
+        if [[ -n "$SALT" ]]; then
+            # Remover as linhas de salt existentes
+            sed -i '/AUTH_KEY/d' /var/www/html/wp-config.php
+            sed -i '/SECURE_AUTH_KEY/d' /var/www/html/wp-config.php
+            sed -i '/LOGGED_IN_KEY/d' /var/www/html/wp-config.php
+            sed -i '/NONCE_KEY/d' /var/www/html/wp-config.php
+            sed -i '/AUTH_SALT/d' /var/www/html/wp-config.php
+            sed -i '/SECURE_AUTH_SALT/d' /var/www/html/wp-config.php
+            sed -i '/LOGGED_IN_SALT/d' /var/www/html/wp-config.php
+            sed -i '/NONCE_SALT/d' /var/www/html/wp-config.php
+            
+            # Adicionar novas salt keys
+            sed -i "/\$table_prefix/i\\$SALT" /var/www/html/wp-config.php
+        fi
+        
+        # Configurações de Redis
         cat >> /var/www/html/wp-config.php << 'EOF'
 
-/* Configurações de segurança avançadas */
+// Redis Configuration
+define('WP_REDIS_HOST', 'redis');
+define('WP_REDIS_PORT', 6379);
+define('WP_REDIS_PASSWORD', 'redis_secure_password');
+define('WP_REDIS_DATABASE', 0);
+define('WP_REDIS_TIMEOUT', 1);
+define('WP_REDIS_READ_TIMEOUT', 1);
+
+// Cache Configuration
+define('WP_CACHE', true);
+define('FORCE_SSL_ADMIN', false);
+
+// Debug Configuration (disable in production)
 define('WP_DEBUG', false);
 define('WP_DEBUG_LOG', false);
 define('WP_DEBUG_DISPLAY', false);
+
+// Security
 define('DISALLOW_FILE_EDIT', true);
 define('DISALLOW_FILE_MODS', false);
-define('AUTOMATIC_UPDATER_DISABLED', false);
-define('WP_AUTO_UPDATE_CORE', true);
-define('FORCE_SSL_ADMIN', true);
-define('COOKIE_DOMAIN', '');
-define('COOKIEHASH', '');
+define('FORCE_SSL_ADMIN', false);
 
-/* Configurações de performance */
-define('WP_CACHE', true);
-define('COMPRESS_CSS', true);
-define('COMPRESS_SCRIPTS', true);
-define('CONCATENATE_SCRIPTS', false);
-define('ENFORCE_GZIP', true);
+// Performance
 define('WP_MEMORY_LIMIT', '512M');
+define('WP_MAX_MEMORY_LIMIT', '512M');
 
-/* Configurações de upload */
-ini_set('upload_max_size', '128M');
-ini_set('post_max_size', '128M');
-ini_set('max_execution_time', 600);
-ini_set('max_input_vars', 5000);
+// Auto-updates
+define('WP_AUTO_UPDATE_CORE', true);
+define('AUTOMATIC_UPDATER_DISABLED', false);
 
-/* Configurações de sessão Redis */
-ini_set('session.save_handler', 'redis');
-ini_set('session.save_path', 'tcp://redis:6379?auth=redis_secure_password');
-
-/* Configurações de banco de dados */
-define('DB_CHARSET', 'utf8mb4');
-define('DB_COLLATE', 'utf8mb4_unicode_ci');
-
-/* Configurações de backup automático */
-define('WP_BACKUP_DIR', '/var/www/html/wp-content/backup/');
-define('BACKUP_IGNORE_FILETYPES', 'jpg,jpeg,png,gif,bmp,pdf,doc,docx,xls,xlsx');
 EOF
         
-        # Gerar chaves de segurança do WordPress
-        log "Gerando chaves de segurança..."
-        SALT=$(curl -L https://api.wordpress.org/secret-key/1.1/salt/ 2>/dev/null || echo "")
-        if [ ! -z "$SALT" ]; then
-            # Remove as linhas de salt padrão e adiciona as novas
-            sed -i '/AUTH_KEY\|SECURE_AUTH_KEY\|LOGGED_IN_KEY\|NONCE_KEY\|AUTH_SALT\|SECURE_AUTH_SALT\|LOGGED_IN_SALT\|NONCE_SALT/d' /var/www/html/wp-config.php
-            echo "$SALT" >> /var/www/html/wp-config.php
-        fi
-        
-        # Configurar diretório de backup
-        mkdir -p /var/www/html/wp-content/backup
-        
-        # Definir permissões corretas
-        chown -R nobody:nogroup /var/www/html
-        find /var/www/html -type f -exec chmod 644 {} \; 2>/dev/null || true
-        find /var/www/html -type d -exec chmod 755 {} \; 2>/dev/null || true
-        chmod 600 /var/www/html/wp-config.php
-        chmod 755 /var/www/html/wp-content/backup
-        
-        log "✅ WordPress configurado com sucesso!"
+        log "✅ wp-config.php configurado com sucesso!"
     else
-        log "WordPress já está configurado."
+        info "📋 wp-config.php já existe ou dados protegidos - pulando configuração"
     fi
-    
-    # Garantir permissões corretas sempre
-    chown -R nobody:nogroup /var/www/html
-    find /var/www/html -type f -exec chmod 644 {} \; 2>/dev/null || true
-    find /var/www/html -type d -exec chmod 755 {} \; 2>/dev/null || true
-    chmod 600 /var/www/html/wp-config.php 2>/dev/null || true
 }
 
-# Configurar plugins automaticamente
-configure_plugins() {
-    if [ "$HAS_DATA" = false ] && [ ! -z "$REDIS_HOST" ]; then
-        log "Ativando plugins de cache..."
+# Testar conexão Redis
+test_redis_connection() {
+    log "🔗 Testando conexão com Redis..."
+    
+    # Aguardar Redis estar disponível
+    local retry_count=0
+    local max_retries=30
+    
+    while [[ $retry_count -lt $max_retries ]]; do
+        if redis-cli -h redis -p 6379 -a "${REDIS_PASSWORD:-redis_secure_password}" ping > /dev/null 2>&1; then
+            log "✅ Redis conectado com sucesso!"
+            return 0
+        fi
         
-        # Aguardar WordPress estar disponível
-        sleep 10
+        retry_count=$((retry_count + 1))
+        warn "⏳ Aguardando Redis... (tentativa $retry_count/$max_retries)"
+        sleep 2
+    done
+    
+    error "❌ Falha ao conectar com Redis após $max_retries tentativas"
+    return 1
+}
+
+# Aguardar MySQL estar disponível
+wait_for_mysql() {
+    if [[ -n "${MYSQL_HOST}" ]]; then
+        log "🔗 Aguardando MySQL estar disponível..."
         
-        # Ativar Redis Object Cache plugin via WP-CLI
-        cd /var/www/html
-        /usr/local/bin/wp plugin activate redis-cache --allow-root --quiet 2>/dev/null || true
-        /usr/local/bin/wp redis enable --allow-root --quiet 2>/dev/null || true
+        local retry_count=0
+        local max_retries=30
         
-        # Ativar LiteSpeed Cache plugin
-        /usr/local/bin/wp plugin activate litespeed-cache --allow-root --quiet 2>/dev/null || true
+        while [[ $retry_count -lt $max_retries ]]; do
+            if mysql -h"${MYSQL_HOST}" -u"${MYSQL_USER}" -p"${MYSQL_PASSWORD}" -e "SELECT 1" > /dev/null 2>&1; then
+                log "✅ MySQL conectado com sucesso!"
+                return 0
+            fi
+            
+            retry_count=$((retry_count + 1))
+            warn "⏳ Aguardando MySQL... (tentativa $retry_count/$max_retries)"
+            sleep 2
+        done
         
-        log "✅ Plugins de cache ativados"
+        error "❌ Falha ao conectar com MySQL após $max_retries tentativas"
+        return 1
     fi
+}
+
+# Ativar plugins essenciais
+activate_plugins() {
+    if [[ -f "/var/www/html/wp-config.php" ]] && check_database_protection; then
+        log "🔌 Ativando plugins essenciais..."
+        
+        cd /var/www/html
+        
+        # Aguardar WordPress estar acessível
+        local retry_count=0
+        while [[ $retry_count -lt 10 ]]; do
+            if wp core is-installed --allow-root 2>/dev/null; then
+                break
+            fi
+            retry_count=$((retry_count + 1))
+            sleep 3
+        done
+        
+        # Ativar Redis Object Cache
+        if wp plugin is-installed redis-cache --allow-root 2>/dev/null; then
+            wp plugin activate redis-cache --allow-root 2>/dev/null || true
+            wp redis enable --allow-root 2>/dev/null || true
+            log "✅ Redis Object Cache ativado"
+        fi
+        
+        # Ativar LiteSpeed Cache
+        if wp plugin is-installed litespeed-cache --allow-root 2>/dev/null; then
+            wp plugin activate litespeed-cache --allow-root 2>/dev/null || true
+            log "✅ LiteSpeed Cache ativado"
+        fi
+    else
+        info "⏭️  Pulando ativação de plugins - proteção de dados ativa"
+    fi
+}
+
+# Configurar permissões
+setup_permissions() {
+    log "🔒 Configurando permissões de arquivos..."
+    
+    # Definir ownership correto
+    chown -R nobody:nogroup /var/www/html
+    
+    # Permissões de arquivos
+    find /var/www/html -type f -exec chmod 644 {} \;
+    find /var/www/html -type d -exec chmod 755 {} \;
+    
+    # wp-config.php deve ser mais restrito
+    if [[ -f "/var/www/html/wp-config.php" ]]; then
+        chmod 600 /var/www/html/wp-config.php
+    fi
+    
+    # .htaccess precisa ser writeable para plugins de cache
+    if [[ -f "/var/www/html/.htaccess" ]]; then
+        chmod 666 /var/www/html/.htaccess
+    fi
+    
+    log "✅ Permissões configuradas"
+}
+
+# Configurar LiteSpeed
+setup_litespeed() {
+    log "⚡ Configurando LiteSpeed..."
+    
+    # Definir senha do admin se não existir
+    if [[ -n "${LSWS_ADMIN_PASS}" ]]; then
+        echo "admin:${LSWS_ADMIN_PASS}" | /usr/local/lsws/admin/misc/admpass.sh
+        log "✅ Senha do admin LiteSpeed definida"
+    fi
+    
+    # Copiar configurações se não existirem
+    if [[ ! -f "/usr/local/lsws/conf/httpd_config.conf" ]]; then
+        warn "⚠️  Arquivo de configuração LiteSpeed não encontrado, usando padrão"
+    fi
+    
+    log "✅ LiteSpeed configurado"
 }
 
 # Função principal
 main() {
-    log "=== Iniciando configuração do container WordPress com Redis ==="
+    log "🌟 === WORDPRESS ALTA PERFORMANCE - LITESPEED ===" 
+    log "🚀 Versão: 2.0.0"
+    log "📦 Stack: Ubuntu 24.04 + LiteSpeed + PHP 8.2 + Redis + MySQL"
+    log "🔧 Deploy: Coolify Ready"
     
-    # Verificar proteção de dados
-    check_database_protection
+    # Aguardar dependências
+    wait_for_mysql
+    test_redis_connection
     
-    # Configurar LiteSpeed
-    configure_litespeed
-    
-    # Configurar Redis
-    configure_redis
-    
-    # Configurar WordPress
+    # Configurar componentes
+    setup_litespeed
     configure_wordpress
+    setup_permissions
     
-    # Configurar plugins (apenas se não tem dados)
-    configure_plugins &
+    # Ativar plugins em background para não bloquear
+    (sleep 30 && activate_plugins) &
     
-    # Criar diretórios de log do supervisor
-    mkdir -p /var/log/supervisor
+    log "🎉 Inicialização concluída!"
+    log "🌐 WordPress disponível em: http://localhost"
+    log "🔧 Admin LiteSpeed: http://localhost:7080"
+    log "📊 Use 'docker-compose logs -f wordpress' para monitorar"
     
-    log "=== Configuração concluída! ==="
-    log "WordPress: http://localhost"
-    log "LiteSpeed Admin: http://localhost:7080 (admin/123456)"
-    log "phpMyAdmin: http://localhost:8080"
-    if [ ! -z "$REDIS_HOST" ]; then
-        log "Redis: Configurado e funcionando"
-    fi
-    
-    if [ "$HAS_DATA" = true ]; then
-        log "🛡️ DADOS PROTEGIDOS: Configuração existente preservada"
-    fi
-    
-    # Executar comando fornecido
+    # Executar comando passado como argumento
     exec "$@"
 }
+
+# Capturar sinais para shutdown graceful
+trap 'log "🛑 Recebido sinal de parada..."; exit 0' SIGTERM SIGINT
 
 # Executar função principal
 main "$@"
